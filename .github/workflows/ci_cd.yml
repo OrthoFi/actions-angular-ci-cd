@@ -39,7 +39,7 @@ on:
         description: secrets.MYGET_API_KEY
         required: true
 env:
-  MYGET_API_KEY: ${{ secrets.MYGET_API_KEY }}
+  MYGET_API_KEY: ${{ secrets.myget-api-key }}
 jobs:
   verify-environment:
     name: Validate Environment
