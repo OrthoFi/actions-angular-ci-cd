@@ -58,52 +58,57 @@ jobs:
           token: ${{ secrets.github-token }}
           dont-fail-build: true
 
-  dependencies:
-    name: Dependencies
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v2
+
       - uses: actions/setup-node@v1
         with:
           node-version: ${{ inputs.node-version }}
 
-      - uses: actions/checkout@v2
+      - name: Restore Dependencies
+        uses: orthofi/actions-install-node-dependencies@v1
 
-      - uses: orthofi/actions-prepare-angular@v1
+      - run: npm run ci-lint
+        shell: pwsh
         env:
           MYGET_API_KEY: ${{ secrets.MYGET_API_KEY }}
 
   unit-tests:
     name: Unit Tests
-    needs: [dependencies]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v2
+
       - uses: actions/setup-node@v1
         with:
           node-version: ${{ inputs.node-version }}
 
-      - uses: actions/checkout@v2
-
-      - uses: orthofi/actions-prepare-angular@v1
-        env:
-          MYGET_API_KEY: ${{ secrets.MYGET_API_KEY }}
+      - name: Restore Dependencies
+        uses: orthofi/actions-install-node-dependencies@v1
 
       - run: npm run ci-test
         shell: pwsh
         env:
           MYGET_API_KEY: ${{ secrets.MYGET_API_KEY }}
 
-  build:
-    name: Build
-    if: needs.verify-environment.outputs.environment
+  deploy:
+    name: Deploy
+    if: ${{ needs.verify-environment.outputs.environment }}
+    environment: ${{ needs.verify-environment.outputs.environment }}
     needs: [verify-environment]
-    concurrency: ${{ inputs.app-name }}-${{ needs.verify-environment.outputs.environment }}
     runs-on: ubuntu-latest
-    env:
-      APP_ENV_NAME: ${{ needs.verify-environment.outputs.environment }}
     steps:
+      - uses: actions/checkout@v2
+
       - uses: actions/setup-node@v1
         with:
           node-version: ${{ inputs.node-version }}
+
+      - name: Restore Dependencies
+        uses: orthofi/actions-install-node-dependencies@v1
 
       - uses: orthofi/actions-set-build-role@v1
         id: set-role
@@ -119,17 +124,11 @@ jobs:
           aws-region: us-east-1
           role-to-assume: ${{ steps.set-role.outputs.build-role }}
 
-      - uses: actions/checkout@v2
-
       - uses: orthofi/actions-aws-ssm-get-by-path@v1
         with:
           paths: ${{ format('/app/client-{0}/,/app/client-{0}/env/{1}/,/env/{1}/', inputs.app-name, needs.verify-environment.outputs.environment) }}
           prefix: APP_
           save-to-environment: true
-
-      - uses: orthofi/actions-prepare-angular@v1
-        env:
-          MYGET_API_KEY: ${{ secrets.MYGET_API_KEY }}
 
       - name: Build
         shell: pwsh
@@ -152,40 +151,9 @@ jobs:
           name: client
           path: dist
 
-  deploy:
-    name: Deploy
-    if: ${{ needs.verify-environment.outputs.environment }}
-    environment: ${{ needs.verify-environment.outputs.environment }}
-    needs: [build, verify-environment]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: orthofi/actions-set-build-role@v1
-        id: set-role
-        with:
-          dev-role: ${{ secrets.aws-role-dev }}
-          environment-name: ${{ needs.verify-environment.outputs.environment }}
-          production-role: ${{ secrets.aws-role-prod }}
-
-      - uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.aws-access-key-id }}
-          aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
-          aws-region: us-east-1
-          role-to-assume: ${{ steps.set-role.outputs.build-role }}
-
-      - uses: orthofi/actions-aws-ssm-get-by-path@v1
-        with:
-          paths: ${{ format('/app/client-{0}/env/{1}/', inputs.app-name, needs.verify-environment.outputs.environment) }}
-          prefix: APP_
-          save-to-environment: true
-
-      - uses: actions/download-artifact@v2
-        with:
-          name: client
-
       - name: Upload to S3
         shell: bash
-        run: aws s3 sync . "s3://${APP_BUCKET}" --delete
+        run: aws s3 sync dist/ "s3://${APP_BUCKET}" --delete
 
       - name: Create Cloudfront Invalidation
         shell: bash
