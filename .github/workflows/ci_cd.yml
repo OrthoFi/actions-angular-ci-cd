@@ -32,6 +32,9 @@ on:
       aws-role-prod:
         description: secrets.PRODUCTION_BUILD_ROLE
         required: true
+      github-token:
+        description: secrets.BUILD_GITHUB_TOKEN
+        required: true
       myget-api-key:
         description: secrets.MYGET_API_KEY
         required: true
@@ -52,7 +55,7 @@ jobs:
         id: verify
         with:
           environment: ${{ steps.environment.outputs.target-environment }}
-          token: ${{ secrets.BUILD_GITHUB_TOKEN }}
+          token: ${{ secrets.github-token }}
           dont-fail-build: true
 
   dependencies:
