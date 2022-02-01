@@ -38,7 +38,8 @@ on:
       myget-api-key:
         description: secrets.MYGET_API_KEY
         required: true
-
+env:
+  MYGET_API_KEY: ${{ secrets.MYGET_API_KEY }}
 jobs:
   verify-environment:
     name: Validate Environment
@@ -68,13 +69,10 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
 
-      - name: Restore Dependencies
-        uses: orthofi/actions-install-node-dependencies@v1
+      - uses: orthofi/actions-install-node-dependencies@v1
 
       - run: npm run ci-lint
         shell: pwsh
-        env:
-          MYGET_API_KEY: ${{ secrets.MYGET_API_KEY }}
 
   unit-tests:
     name: Unit Tests
@@ -91,8 +89,6 @@ jobs:
 
       - run: npm run ci-test
         shell: pwsh
-        env:
-          MYGET_API_KEY: ${{ secrets.MYGET_API_KEY }}
 
   deploy:
     name: Deploy
@@ -132,8 +128,6 @@ jobs:
 
       - name: Build
         shell: pwsh
-        env:
-          MYGET_API_KEY: ${{ secrets.MYGET_API_KEY }}
         run: |
           if ('${{ inputs.legacy-build }}' -eq 'true')
           {
