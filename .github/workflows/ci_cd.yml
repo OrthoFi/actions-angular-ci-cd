@@ -131,7 +131,7 @@ jobs:
         run: |
           if ('${{ inputs.legacy-build }}' -eq 'true')
           {
-            npm run build -- --configuration=${{ needs.verify-environment.outputs.environment }}
+            npm run ci-build -- --configuration=${{ needs.verify-environment.outputs.environment }}
           } 
           else
           {
