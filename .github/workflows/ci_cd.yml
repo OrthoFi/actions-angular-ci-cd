@@ -1,0 +1,184 @@
+name: Angular CI/CD
+on:
+  workflow_call:
+    inputs:
+      app-name:
+        description: The application name (eg patient, practice, onboarding)
+        required: true
+        type: string
+      environment-name:
+        description: The target environment name (eg demo, dev, production, risk)
+        required: true
+        type: string
+      legacy-build:
+        description: Should run the build in legacy mode
+        required: true
+        type: boolean
+      node-version:
+        description: The node version to use
+        required: true
+        type: string
+
+    secrets:
+      aws-access-key-id:
+        description: secrets.BUILD_AWS_ACCESS_KEY_ID
+        required: true
+      aws-secret-access-key:
+        description: secrets.BUILD_AWS_SECRET_ACCESS_KEY
+        required: true
+      aws-role-dev:
+        description: secrets.OCKERS_BUILD_ROLE
+        required: true
+      aws-role-prod:
+        description: secrets.PRODUCTION_BUILD_ROLE
+        required: true
+      myget-api-key:
+        description: secrets.MYGET_API_KEY
+        required: true
+
+jobs:
+  verify-environment:
+    name: Validate Environment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.verify.outputs.environment }}
+    steps:
+      - uses: orthofi/actions-set-target-environment@v1
+        id: environment
+        with:
+          environment-name: ${{ inputs.environment-name }}
+
+      - uses: orthofi/actions-verify-environment@v1
+        id: verify
+        with:
+          environment: ${{ steps.environment.outputs.target-environment }}
+          token: ${{ secrets.BUILD_GITHUB_TOKEN }}
+          dont-fail-build: true
+
+  dependencies:
+    name: Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v1
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - uses: actions/checkout@v2
+
+      - uses: orthofi/actions-prepare-angular@v1
+        env:
+          MYGET_API_KEY: ${{ secrets.MYGET_API_KEY }}
+
+  unit-tests:
+    name: Unit Tests
+    needs: [dependencies]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v1
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - uses: actions/checkout@v2
+
+      - uses: orthofi/actions-prepare-angular@v1
+        env:
+          MYGET_API_KEY: ${{ secrets.MYGET_API_KEY }}
+
+      - run: npm run ci-test
+
+  build:
+    name: Build
+    if: needs.verify-environment.outputs.environment
+    needs: [verify-environment]
+    concurrency: ${{ inputs.app-name }}-${{ needs.verify-environment.outputs.environment }}
+    runs-on: ubuntu-latest
+    env:
+      APP_ENV_NAME: ${{ needs.verify-environment.outputs.environment }}
+    steps:
+      - uses: actions/setup-node@v1
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - uses: orthofi/actions-set-build-role@v1
+        id: set-role
+        with:
+          dev-role: ${{ secrets.aws-role-dev }}
+          environment-name: ${{ needs.verify-environment.outputs.environment }}
+          production-role: ${{ secrets.aws-role-prod }}
+
+      - uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.aws-access-key-id }}
+          aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
+          aws-region: us-east-1
+          role-to-assume: ${{ steps.set-role.outputs.build-role }}
+
+      - uses: actions/checkout@v2
+
+      - uses: orthofi/actions-aws-ssm-get-by-path@v1
+        with:
+          paths: ${{ format('/app/client-{0}/,/app/client-{0}/env/{1}/,/env/{1}/', inputs.app-name, needs.verify-environment.outputs.environment) }}
+          prefix: APP_
+          save-to-environment: true
+
+      - uses: orthofi/actions-prepare-angular@v1
+        env:
+          MYGET_API_KEY: ${{ secrets.MYGET_API_KEY }}
+
+      - name: Build
+        shell: pwsh
+        run: |
+          if ('${{ inputs.legacy-build }}' -eq 'true')
+          {
+            npm run build -- --configuration=${{ needs.verify-environment.outputs.environment }}
+          } 
+          else
+          {
+            npm run ci-build
+          }
+
+      - uses: orthofi/actions-angular-build-info@v1
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: client
+          path: dist
+
+  deploy:
+    name: Deploy
+    if: ${{ needs.verify-environment.outputs.environment }}
+    environment: ${{ needs.verify-environment.outputs.environment }}
+    needs: [build, verify-environment]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: orthofi/actions-set-build-role@v1
+        id: set-role
+        with:
+          dev-role: ${{ secrets.aws-role-dev }}
+          environment-name: ${{ needs.verify-environment.outputs.environment }}
+          production-role: ${{ secrets.aws-role-prod }}
+
+      - uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.aws-access-key-id }}
+          aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
+          aws-region: us-east-1
+          role-to-assume: ${{ steps.set-role.outputs.build-role }}
+
+      - uses: orthofi/actions-aws-ssm-get-by-path@v1
+        with:
+          paths: ${{ format('/app/client-{0}/env/{1}/', inputs.app-name, needs.verify-environment.outputs.environment) }}
+          prefix: APP_
+          save-to-environment: true
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: client
+
+      - name: Upload to S3
+        shell: bash
+        run: aws s3 sync . "s3://${APP_BUCKET}" --delete
+
+      - name: Create Cloudfront Invalidation
+        shell: bash
+        run: aws cloudfront create-invalidation --distribution-id ${APP_CLOUDFRONT_ID} --paths "/*"
