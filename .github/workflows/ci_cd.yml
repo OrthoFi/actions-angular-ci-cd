@@ -13,7 +13,7 @@ on:
       legacy-build:
         default: false
         description: Should run the build in legacy mode
-        required: true
+        required: false
         type: boolean
       node-version:
         description: The node version to use
