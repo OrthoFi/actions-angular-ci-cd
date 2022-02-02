@@ -11,6 +11,7 @@ on:
         required: true
         type: string
       legacy-build:
+        default: false
         description: Should run the build in legacy mode
         required: true
         type: boolean
@@ -84,8 +85,7 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
 
-      - name: Restore Dependencies
-        uses: orthofi/actions-install-node-dependencies@v1
+      - uses: orthofi/actions-install-node-dependencies@v1
 
       - run: npm run ci-test
         shell: pwsh
@@ -103,8 +103,7 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
 
-      - name: Restore Dependencies
-        uses: orthofi/actions-install-node-dependencies@v1
+      - uses: orthofi/actions-install-node-dependencies@v1
 
       - uses: orthofi/actions-set-build-role@v1
         id: set-role
@@ -147,8 +146,8 @@ jobs:
 
       - name: Upload to S3
         shell: bash
-        run: aws s3 sync dist/ "s3://${APP_BUCKET}" --delete
+        run: aws s3 sync dist/ "s3://${{ env.APP_BUCKET }}" --delete
 
       - name: Create Cloudfront Invalidation
         shell: bash
-        run: aws cloudfront create-invalidation --distribution-id ${APP_CLOUDFRONT_ID} --paths "/*"
+        run: aws cloudfront create-invalidation --distribution-id ${{ env.APP_CLOUDFRONT_ID }} --paths "/*"
