@@ -123,6 +123,7 @@ jobs:
         with:
           paths: ${{ format('/app/client-{0}/,/app/client-{0}/env/{1}/,/env/{1}/', inputs.app-name, needs.verify-environment.outputs.environment) }}
           prefix: APP_
+          recursive: true
           save-to-environment: true
 
       - name: Build
