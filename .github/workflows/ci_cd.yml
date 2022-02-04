@@ -121,6 +121,7 @@ jobs:
 
       - uses: orthofi/actions-aws-ssm-get-by-path@v1
         with:
+          delimiter: __
           paths: ${{ format('/app/client-{0}/,/app/client-{0}/env/{1}/,/env/{1}/', inputs.app-name, needs.verify-environment.outputs.environment) }}
           prefix: APP_
           recursive: true
