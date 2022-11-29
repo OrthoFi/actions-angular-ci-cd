@@ -39,23 +39,13 @@ on:
 env:
   BUILD_GITHUB_TOKEN: ${{ secrets.github-token }}
 jobs:
-  verify-environment:
-    name: Validate Environment
-    runs-on: ubuntu-latest
-    outputs:
-      environment: ${{ steps.verify.outputs.environment }}
-    steps:
-      - uses: orthofi/actions-set-target-environment@v1
-        id: environment
-        with:
-          environment-name: ${{ inputs.environment-name }}
-
-      - uses: orthofi/actions-verify-environment@v1
-        id: verify
-        with:
-          environment: ${{ steps.environment.outputs.target-environment }}
-          token: ${{ secrets.github-token }}
-          dont-fail-build: true
+  set-environment-name:
+    name: Environment
+    uses: orthofi/actions-utilities/.github/workflows/set_environment.yml@v1
+    with:
+      environment-name: ${{ github.inputs.environment }}
+    secrets:
+      github-token: ${{ secrets.github-token }}
 
   lint:
     name: Lint
@@ -89,9 +79,9 @@ jobs:
 
   deploy:
     name: Deploy
-    if: ${{ needs.verify-environment.outputs.environment }}
-    environment: ${{ needs.verify-environment.outputs.environment }}
-    needs: [verify-environment]
+    if: ${{ needs.set-environment-name.outputs.is-valid }}
+    environment: ${{ needs.set-environment-name.outputs.environment-name }}
+    needs: [set-environment-name]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -106,10 +96,10 @@ jobs:
         id: set-role
         with:
           dev-role: ${{ secrets.aws-role-dev }}
-          environment-name: ${{ needs.verify-environment.outputs.environment }}
+          environment-name: ${{ needs.set-environment-name.outputs.environment-name }}
           production-role: ${{ secrets.aws-role-prod }}
 
-      - uses: aws-actions/configure-aws-credentials@v1
+      - uses: aws-actions/configure-aws-credentials@v1-node16
         with:
           aws-access-key-id: ${{ secrets.aws-access-key-id }}
           aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
@@ -119,7 +109,7 @@ jobs:
       - uses: orthofi/actions-aws-ssm-get-by-path@v1
         with:
           delimiter: __
-          paths: ${{ format('/app/client-{0}/,/app/client-{0}/env/{1}/,/env/{1}/', inputs.app-name, needs.verify-environment.outputs.environment) }}
+          paths: ${{ format('/app/client-{0}/,/app/client-{0}/env/{1}/,/env/{1}/', inputs.app-name, needs.set-environment-name.outputs.environment-name) }}
           prefix: APP_
           recursive: true
           save-to-environment: true
@@ -129,7 +119,7 @@ jobs:
         run: |
           if ('${{ inputs.legacy-build }}' -eq 'true')
           {
-            npm run ci-build -- --configuration=${{ needs.verify-environment.outputs.environment }}
+            npm run ci-build -- --configuration=${{ needs.set-environment-name.outputs.environment-name }}
           } 
           else
           {
