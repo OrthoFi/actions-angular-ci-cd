@@ -42,35 +42,25 @@ on:
 env:
   MYGET_API_KEY: ${{ secrets.myget-api-key }}
 jobs:
-  verify-environment:
-    name: Validate Environment
-    runs-on: ubuntu-20.04
-    outputs:
-      environment: ${{ steps.verify.outputs.environment }}
-    steps:
-      - uses: orthofi/actions-set-target-environment@v1
-        id: environment
-        with:
-          environment-name: ${{ inputs.environment-name }}
-
-      - uses: orthofi/actions-verify-environment@v1
-        id: verify
-        with:
-          environment: ${{ steps.environment.outputs.target-environment }}
-          token: ${{ secrets.github-token }}
-          dont-fail-build: true
+  set-environment-name:
+    name: Environment
+    uses: orthofi/actions-utilities/.github/workflows/set_environment.yml@v1
+    with:
+      environment-name: ${{ github.inputs.environment }}
+    secrets:
+      github-token: ${{ secrets.github-token }}
 
   lint:
     name: Lint
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-      - uses: actions/setup-node@v1
+      - uses: actions/setup-node@v3
         with:
           node-version: ${{ inputs.node-version }}
 
-      - uses: orthofi/actions-install-node-dependencies@v1
+      - uses: orthofi/actions-install-node-dependencies@v2
 
       - run: npm run ci-lint
         shell: pwsh
@@ -79,60 +69,62 @@ jobs:
     name: Unit Tests
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-      - uses: actions/setup-node@v1
+      - uses: actions/setup-node@v3
         with:
           node-version: ${{ inputs.node-version }}
 
-      - uses: orthofi/actions-install-node-dependencies@v1
+      - uses: orthofi/actions-install-node-dependencies@v2
 
       - run: npm run ci-test
         shell: pwsh
 
   deploy:
     name: Deploy
-    if: ${{ needs.verify-environment.outputs.environment }}
-    environment: ${{ needs.verify-environment.outputs.environment }}
-    needs: [verify-environment]
+    if: ${{ needs.set-environment-name.outputs.is-valid }}
+    environment: ${{ needs.set-environment-name.outputs.environment-name }}
+    needs: [set-environment-name]
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-      - uses: actions/setup-node@v1
+      - uses: actions/setup-node@v3
         with:
           node-version: ${{ inputs.node-version }}
 
-      - uses: orthofi/actions-install-node-dependencies@v1
+      - uses: orthofi/actions-install-node-dependencies@v2
 
       - uses: orthofi/actions-set-build-role@v1
         id: set-role
         with:
           dev-role: ${{ secrets.aws-role-dev }}
-          environment-name: ${{ needs.verify-environment.outputs.environment }}
+          environment-name: ${{ needs.set-environment-name.outputs.environment-name }}
           production-role: ${{ secrets.aws-role-prod }}
 
-      - uses: aws-actions/configure-aws-credentials@v1
+      - uses: aws-actions/configure-aws-credentials@v1-node16
         with:
           aws-access-key-id: ${{ secrets.aws-access-key-id }}
           aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
           aws-region: us-east-1
           role-to-assume: ${{ steps.set-role.outputs.build-role }}
 
-      - uses: orthofi/actions-aws-ssm-get-by-path@v1
+      - uses: orthofi/actions-aws-ssm-get-by-path@v2
         with:
           delimiter: __
-          paths: ${{ format('/app/client-{0}/,/app/client-{0}/env/{1}/,/env/{1}/', inputs.app-name, needs.verify-environment.outputs.environment) }}
-          prefix: APP_
+          paths: ${{ format('/app/client-{0}/,/app/client-{0}/env/{1}/,/env/{1}/', inputs.app-name, needs.set-environment-name.outputs.environment-name) }}
+          prefix: OFI__
           recursive: true
           save-to-environment: true
 
       - name: Build
         shell: pwsh
+        env:
+          OFI__ENVIRONMENT: ${{ needs.set-environment-name.outputs.environment-name }}
         run: |
           if ('${{ inputs.legacy-build }}' -eq 'true')
           {
-            npm run ci-build -- --configuration=${{ needs.verify-environment.outputs.environment }}
+            npm run ci-build -- --configuration=${{ needs.set-environment-name.outputs.environment-name }}
           } 
           else
           {
@@ -141,15 +133,15 @@ jobs:
 
       - uses: orthofi/actions-angular-build-info@v1
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: client
           path: dist
 
       - name: Upload to S3
         shell: bash
-        run: aws s3 sync dist/ "s3://${{ env.APP_BUCKET }}" --delete
+        run: aws s3 sync dist/ "s3://${{ env.OFI__BUCKET }}" --delete
 
       - name: Create Cloudfront Invalidation
         shell: bash
-        run: aws cloudfront create-invalidation --distribution-id ${{ env.APP_CLOUDFRONT_ID }} --paths "/*"
+        run: aws cloudfront create-invalidation --distribution-id ${{ env.OFI__CLOUDFRONT_ID }} --paths "/*"
