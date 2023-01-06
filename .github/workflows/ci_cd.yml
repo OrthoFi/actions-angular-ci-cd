@@ -36,8 +36,12 @@ on:
       github-token:
         description: secrets.BUILD_GITHUB_TOKEN
         required: true
+      myget-api-key:
+        description: secrets.MYGET_API_KEY
+        required: false
 env:
   BUILD_GITHUB_TOKEN: ${{ secrets.github-token }}
+  MYGET_API_KEY: ${{ secrets.myget-api-key }}
 jobs:
   set-environment-name:
     name: Environment
@@ -106,16 +110,18 @@ jobs:
           aws-region: us-east-1
           role-to-assume: ${{ steps.set-role.outputs.build-role }}
 
-      - uses: orthofi/actions-aws-ssm-get-by-path@v1
+      - uses: orthofi/actions-aws-ssm-get-by-path@v2
         with:
           delimiter: __
-          paths: ${{ format('/app/client-{0}/,/app/client-{0}/env/{1}/,/env/{1}/', inputs.app-name, needs.set-environment-name.outputs.environment-name) }}
+          paths: ${{ format('/env/{1}/,/app/client-{0}/,/app/client-{0}/env/{1}/', inputs.app-name, needs.set-environment-name.outputs.environment-name) }}
           prefix: OFI__
           recursive: true
           save-to-environment: true
 
       - name: Build
         shell: pwsh
+        env:
+          OFI__ENVIRONMENT: ${{ needs.set-environment-name.outputs.environment-name }}
         run: |
           if ('${{ inputs.legacy-build }}' -eq 'true')
           {
