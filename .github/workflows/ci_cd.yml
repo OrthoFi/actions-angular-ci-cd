@@ -110,7 +110,7 @@ jobs:
         with:
           delimiter: __
           paths: ${{ format('/app/client-{0}/,/app/client-{0}/env/{1}/,/env/{1}/', inputs.app-name, needs.set-environment-name.outputs.environment-name) }}
-          prefix: APP_
+          prefix: OFI__
           recursive: true
           save-to-environment: true
 
@@ -135,8 +135,8 @@ jobs:
 
       - name: Upload to S3
         shell: bash
-        run: aws s3 sync dist/ "s3://${{ env.APP_BUCKET }}" --delete
+        run: aws s3 sync dist/ "s3://${{ env.OFI__BUCKET }}" --delete
 
       - name: Create Cloudfront Invalidation
         shell: bash
-        run: aws cloudfront create-invalidation --distribution-id ${{ env.APP_CLOUDFRONT_ID }} --paths "/*"
+        run: aws cloudfront create-invalidation --distribution-id ${{ env.OFI__CLOUDFRONT_ID }} --paths "/*"
