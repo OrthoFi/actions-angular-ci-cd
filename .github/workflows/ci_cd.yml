@@ -53,7 +53,7 @@ jobs:
 
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
 
@@ -68,7 +68,7 @@ jobs:
 
   unit-tests:
     name: Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
 
@@ -86,7 +86,7 @@ jobs:
     if: ${{ needs.set-environment-name.outputs.is-valid }}
     environment: ${{ needs.set-environment-name.outputs.environment-name }}
     needs: [set-environment-name]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
 
