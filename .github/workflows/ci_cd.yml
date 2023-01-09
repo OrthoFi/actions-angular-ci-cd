@@ -83,7 +83,7 @@ jobs:
 
   deploy:
     name: Deploy
-    if: ${{ needs.set-environment-name.outputs.is-valid }}
+    if: ${{ needs.set-environment-name.outputs.is-valid == 'true' }}
     environment: ${{ needs.set-environment-name.outputs.environment-name }}
     needs: [set-environment-name]
     runs-on: ubuntu-20.04
