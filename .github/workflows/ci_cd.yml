@@ -30,7 +30,7 @@ on:
       aws-role-dev:
         description: secrets.OCKERS_BUILD_ROLE
         required: true
-      aws-role-prod:
+      aws-role-production:
         description: secrets.PRODUCTION_BUILD_ROLE
         required: true
       github-token:
@@ -43,9 +43,9 @@ env:
   BUILD_GITHUB_TOKEN: ${{ secrets.github-token }}
   MYGET_API_KEY: ${{ secrets.myget-api-key }}
 jobs:
-  set-environment-name:
+  set-environment-names:
     name: Environment
-    uses: orthofi/actions-utilities/.github/workflows/set_environment.yml@v1
+    uses: orthofi/actions-utilities/.github/workflows/set_environments.yml@v1
     with:
       environment-name: ${{ inputs.environment-name }}
     secrets:
@@ -83,9 +83,12 @@ jobs:
 
   deploy:
     name: Deploy
-    if: ${{ needs.set-environment-name.outputs.is-valid == 'true' }}
-    environment: ${{ needs.set-environment-name.outputs.environment-name }}
-    needs: [set-environment-name]
+    environment: ${{ matrix.environment-name }}
+    concurrency: ${{ matrix.environment-name }}
+    strategy:
+      matrix:
+        environment-name: ${{ fromJSON(needs.set-environment-names.outputs.environment-names) }}
+    needs: [set-environment-names]
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
@@ -100,8 +103,8 @@ jobs:
         id: set-role
         with:
           dev-role: ${{ secrets.aws-role-dev }}
-          environment-name: ${{ needs.set-environment-name.outputs.environment-name }}
-          production-role: ${{ secrets.aws-role-prod }}
+          environment-name: ${{ matrix.environment-name }}
+          production-role: ${{ secrets.aws-role-production }}
 
       - uses: aws-actions/configure-aws-credentials@v1-node16
         with:
@@ -113,7 +116,7 @@ jobs:
       - uses: orthofi/actions-aws-ssm-get-by-path@v2
         with:
           delimiter: __
-          paths: ${{ format('/env/{1}/,/app/client-{0}/,/app/client-{0}/env/{1}/', inputs.app-name, needs.set-environment-name.outputs.environment-name) }}
+          paths: ${{ format('/env/{1}/,/app/client-{0}/,/app/client-{0}/env/{1}/', inputs.app-name, matrix.environment-name) }}
           prefix: OFI__
           recursive: true
           save-to-environment: true
@@ -121,11 +124,11 @@ jobs:
       - name: Build
         shell: pwsh
         env:
-          OFI__ENVIRONMENT: ${{ needs.set-environment-name.outputs.environment-name }}
+          OFI__ENVIRONMENT: ${{ matrix.environment-name }}
         run: |
           if ('${{ inputs.legacy-build }}' -eq 'true')
           {
-            npm run ci-build -- --configuration=${{ needs.set-environment-name.outputs.environment-name }}
+            npm run ci-build -- --configuration=${{ matrix.environment-name }}
           } 
           else
           {
