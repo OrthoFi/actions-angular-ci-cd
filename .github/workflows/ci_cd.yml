@@ -47,7 +47,7 @@ jobs:
     name: Environment
     uses: orthofi/actions-utilities/.github/workflows/set_environment.yml@v1
     with:
-      environment-name: ${{ github.inputs.environment }}
+      environment-name: ${{ github.inputs.environment-name }}
     secrets:
       github-token: ${{ secrets.github-token }}
 
