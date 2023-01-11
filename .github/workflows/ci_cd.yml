@@ -83,6 +83,7 @@ jobs:
 
   deploy:
     name: Deploy
+    if: ${{ fromJSON(needs.set-environment-names.outputs.environment-names) != '[]' }}
     environment: ${{ matrix.environment-name }}
     concurrency: ${{ matrix.environment-name }}
     strategy:
